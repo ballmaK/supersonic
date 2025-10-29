@@ -9,7 +9,9 @@ spring:
       mode: never
 
 server:
-  port: 9080
+  servlet:
+    context-path:
+  port: 9081
 
 authentication:
   enable: true
@@ -18,4 +20,4 @@ authentication:
   token:
     http:
       header:
-        key: Authorization
+        key: Authorization 

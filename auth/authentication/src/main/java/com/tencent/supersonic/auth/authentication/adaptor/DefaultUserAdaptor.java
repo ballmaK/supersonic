@@ -83,10 +83,14 @@ public class DefaultUserAdaptor implements UserAdaptor {
         UserDO userDO = new UserDO();
         BeanUtils.copyProperties(userReq, userDO);
         try {
+            // 先解密前端传来的密码（前端使用 'supersonic@2024' 密钥加密）
+            String decryptedPassword = AESEncryptionUtil.aesDecryptECB(userReq.getPassword());
+            
             byte[] salt = AESEncryptionUtil.generateSalt(userDO.getName());
             userDO.setSalt(AESEncryptionUtil.getStringFromBytes(salt));
-            userDO.setPassword(AESEncryptionUtil.encrypt(userReq.getPassword(), salt));
+            userDO.setPassword(AESEncryptionUtil.encrypt(decryptedPassword, salt));
         } catch (Exception e) {
+            log.error("Register error for user: {}", userReq.getName(), e);
             throw new RuntimeException("password encrypt error, please try again");
         }
         userRepository.addUser(userDO);
@@ -147,7 +151,9 @@ public class DefaultUserAdaptor implements UserAdaptor {
 
     private void validateOldPassword(UserDO userDO, String password)
             throws PasswordEncryptionException {
-        String oldPassword = encryptPassword(password, userDO.getSalt());
+        // 先解密前端传来的密码
+        String decryptedPassword = AESEncryptionUtil.aesDecryptECB(password);
+        String oldPassword = encryptPassword(decryptedPassword, userDO.getSalt());
         if (!userDO.getPassword().equals(oldPassword)) {
             throw new RuntimeException("Old password is not correct, please try again");
         }
@@ -156,9 +162,12 @@ public class DefaultUserAdaptor implements UserAdaptor {
     private void updatePassword(UserDO userDO, String newPassword, UserRepository userRepository)
             throws PasswordEncryptionException {
         try {
+            // 先解密前端传来的新密码
+            String decryptedNewPassword = AESEncryptionUtil.aesDecryptECB(newPassword);
+            
             byte[] salt = AESEncryptionUtil.generateSalt(userDO.getName());
             userDO.setSalt(AESEncryptionUtil.getStringFromBytes(salt));
-            userDO.setPassword(AESEncryptionUtil.encrypt(newPassword, salt));
+            userDO.setPassword(AESEncryptionUtil.encrypt(decryptedNewPassword, salt));
             userRepository.updateUser(userDO);
         } catch (Exception e) {
             throw new PasswordEncryptionException("Error encrypting password", e);
@@ -187,7 +196,11 @@ public class DefaultUserAdaptor implements UserAdaptor {
             throw new RuntimeException("user not exist,please register");
         }
         try {
-            String password = AESEncryptionUtil.encrypt(userReq.getPassword(),
+            // 先解密前端传来的密码（前端使用 'supersonic@2024' 密钥加密）
+            String decryptedPassword = AESEncryptionUtil.aesDecryptECB(userReq.getPassword());
+            
+            // 再使用用户的salt加密解密后的密码
+            String password = AESEncryptionUtil.encrypt(decryptedPassword,
                     AESEncryptionUtil.getBytesFromString(userDO.getSalt()));
             if (userDO.getPassword().equals(password)) {
                 UserWithPassword user = UserWithPassword.get(userDO.getId(), userDO.getName(),
@@ -198,6 +211,7 @@ public class DefaultUserAdaptor implements UserAdaptor {
                 throw new RuntimeException("password not correct, please try again");
             }
         } catch (Exception e) {
+            log.error("Login error for user: {}", userReq.getName(), e);
             throw new RuntimeException("password encrypt error, please try again");
         }
     }

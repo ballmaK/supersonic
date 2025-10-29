@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS `s2_chat_context`
 (
     `chat_id`        BIGINT NOT NULL , -- context chat id
-    `modified_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP , -- row modify time
+    `modified_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP , -- row modify time
     `user`           varchar(64) DEFAULT NULL , -- row modify user
     `query_text`     LONGVARCHAR DEFAULT NULL , -- query text
     `semantic_parse` LONGVARCHAR DEFAULT NULL , -- parse data
@@ -12,11 +12,11 @@ CREATE TABLE IF NOT EXISTS `s2_chat_context`
 
 CREATE TABLE IF NOT EXISTS `s2_chat`
 (
-    `chat_id`       BIGINT auto_increment ,-- AUTO_INCREMENT,
+    `chat_id`       BIGINT AUTO_INCREMENT ,-- AUTO_INCREMENT,
     `agent_id`       INT DEFAULT NULL,
     `chat_name`     varchar(100) DEFAULT NULL,
-    `create_time`   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP ,
-    `last_time`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP ,
+    `create_time`   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ,
+    `last_time`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ,
     `creator`       varchar(30)  DEFAULT NULL,
     `last_question` varchar(200) DEFAULT NULL,
     `is_delete`     INT DEFAULT '0' COMMENT 'is deleted',
@@ -29,13 +29,13 @@ CREATE TABLE `s2_chat_query`
 (
     `question_id`             BIGINT  NOT NULL AUTO_INCREMENT,
     `agent_id`             INT  NULL,
-    `create_time`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `query_text`          mediumtext,
+    `create_time`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `query_text`          LONGVARCHAR,
     `user_name`         varchar(150)  DEFAULT NULL COMMENT '',
-    `query_state`             int(1) DEFAULT NULL,
+    `query_state`             INT DEFAULT NULL,
     `chat_id`           BIGINT NOT NULL , -- context chat id
-    `query_result` mediumtext NOT NULL ,
-    `score`             int DEFAULT '0',
+    `query_result` LONGVARCHAR NOT NULL ,
+    `score`             INT DEFAULT '0',
     `feedback`          varchar(1024) DEFAULT '',
     PRIMARY KEY (`question_id`)
 );
@@ -45,10 +45,10 @@ CREATE TABLE `s2_chat_parse`
     `question_id`             BIGINT  NOT NULL,
     `chat_id`           BIGINT NOT NULL ,
     `parse_id`          INT NOT NULL ,
-    `create_time`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `create_time`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `query_text`          varchar(500),
     `user_name`         varchar(150)  DEFAULT NULL COMMENT '',
-    `parse_info` mediumtext NOT NULL ,
+    `parse_info` LONGVARCHAR NOT NULL ,
     `is_candidate` INT DEFAULT 1 COMMENT '1是candidate,0是selected'
 );
 
@@ -59,9 +59,9 @@ CREATE TABLE `s2_chat_statistics`
     `user_name`         varchar(150)  DEFAULT NULL COMMENT '',
     `query_text`          varchar(200),
     `interface_name`         varchar(100)  DEFAULT NULL COMMENT '',
-    `cost` INT(6) NOT NULL ,
+    `cost` INT NOT NULL ,
     `type` INT NOT NULL ,
-    `create_time`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    `create_time`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS `s2_chat_config` (

@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: local
+    active: mysql
   application:
     name: chat
   main:
@@ -8,3 +8,6 @@ spring:
   mvc:
     pathmatch:
       matching-strategy: ANT_PATH_MATCHER
+
+mybatis:
+  mapper-locations: classpath:mappers/custom/*.xml,classpath*:/mappers/*.xml

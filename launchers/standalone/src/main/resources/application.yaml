@@ -7,7 +7,7 @@ server:
 
 spring:
   profiles:
-    active: ${S2_DB_TYPE:h2}
+    active: mysql
   application:
     name: chat
   config:
