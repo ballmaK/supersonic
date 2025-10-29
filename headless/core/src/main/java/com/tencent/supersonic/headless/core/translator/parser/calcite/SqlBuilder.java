@@ -54,15 +54,24 @@ public class SqlBuilder {
         }
 
         Set<ModelResp> dataModels = ontologyQuery.getModels();
+        log.info("buildOntologySql - OntologyQuery返回的模型: {}", 
+                dataModels.stream().map(m -> m.getName() + "(ID=" + m.getId() + ")").collect(Collectors.toList()));
+        log.info("buildOntologySql - 查询的指标: {}", 
+                ontologyQuery.getMetrics().stream().map(m -> m.getName() + "(" + m.getModelBizName() + ")").collect(Collectors.toList()));
+        log.info("buildOntologySql - 查询的维度: {}", 
+                ontologyQuery.getDimensions().stream().map(d -> d.getName() + "(" + d.getModelBizName() + ")").collect(Collectors.toList()));
+        
         if (dataModels == null || dataModels.isEmpty()) {
             throw new Exception("data model not found");
         }
 
         TableView tableView;
         if (!CollectionUtils.isEmpty(ontology.getJoinRelations()) && dataModels.size() > 1) {
+            log.info("buildOntologySql - 有JOIN关系且模型数>1，调用probeRelatedModels重新排序");
             Set<ModelResp> models = probeRelatedModels(dataModels, queryStatement.getOntology());
             tableView = render(ontologyQuery, models, scope, schema);
         } else {
+            log.info("buildOntologySql - 没有JOIN关系或只有一个模型，直接render");
             tableView = render(ontologyQuery, dataModels, scope, schema);
         }
 
@@ -81,10 +90,12 @@ public class SqlBuilder {
 
     private Set<ModelResp> probeRelatedModels(Set<ModelResp> dataModels, Ontology ontology) {
         List<JoinRelation> joinRelations = ontology.getJoinRelations();
+        log.info("probeRelatedModels - JOIN关系列表: {}", joinRelations);
         Graph<String, DefaultEdge> graph = buildGraph(joinRelations);
         DijkstraShortestPath<String, DefaultEdge> dijkstraAlg = new DijkstraShortestPath<>(graph);
         Set<String> queryModels =
                 dataModels.stream().map(ModelResp::getName).collect(Collectors.toSet());
+        log.info("probeRelatedModels - 查询涉及的模型: {}", queryModels);
         GraphPath<String, DefaultEdge> selectedGraphPath = null;
         for (String fromModel : queryModels) {
             for (String toModel : queryModels) {
@@ -98,13 +109,18 @@ public class SqlBuilder {
             }
         }
         if (selectedGraphPath == null) {
+            log.info("probeRelatedModels - 未找到路径，返回原始模型集合");
             return dataModels;
         }
         Set<String> modelNames = Sets.newLinkedHashSet();
         for (DefaultEdge edge : selectedGraphPath.getEdgeList()) {
-            modelNames.add(selectedGraphPath.getGraph().getEdgeSource(edge));
-            modelNames.add(selectedGraphPath.getGraph().getEdgeTarget(edge));
+            String source = selectedGraphPath.getGraph().getEdgeSource(edge);
+            String target = selectedGraphPath.getGraph().getEdgeTarget(edge);
+            log.info("probeRelatedModels - 边: {} -> {}", source, target);
+            modelNames.add(source);
+            modelNames.add(target);
         }
+        log.info("probeRelatedModels - 最终模型顺序: {}", modelNames);
         return modelNames.stream().map(m -> ontology.getModelMap().get(m))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
@@ -162,8 +178,11 @@ public class SqlBuilder {
         Map<String, SqlNode> outerSelect = new HashMap<>();
         Map<String, String> beforeModels = new HashMap<>();
         EngineType engineType = EngineType.fromString(schema.getOntology().getDatabase().getType());
+        
+        log.info("render - 模型渲染顺序: {}", dataModels.stream().map(ModelResp::getName).collect(Collectors.toList()));
 
         for (ModelResp dataModel : dataModels) {
+            log.info("render - 正在处理模型: {} (ID={}), bizName={}", dataModel.getName(), dataModel.getId(), dataModel.getBizName());
             final Set<DimSchemaResp> queryDimensions =
                     ontologyQuery.getDimensionsByModel(dataModel.getName());
             final Set<MetricSchemaResp> queryMetrics =
@@ -182,7 +201,9 @@ public class SqlBuilder {
             tableView.setPrimary(primary);
             tableView.setDataModel(dataModel);
             for (String field : tableView.getFields()) {
-                outerSelect.put(field, SemanticNode.parse(alias + "." + field, scope, engineType));
+                // 给字段名添加反引号，避免SQL关键字冲突（如date、order等）
+                String quotedField = "`" + field + "`";
+                outerSelect.put(field, SemanticNode.parse(alias + "." + quotedField, scope, engineType));
             }
             if (left == null) {
                 left = SemanticNode.buildAs(tableView.getAlias(), getTable(tableView));
@@ -343,7 +364,7 @@ public class SqlBuilder {
             }
             tableView.setTable(DataModelNode.build(dataModel, scope));
         } catch (Exception e) {
-            log.error("Failed to create sqlNode for data model {}", dataModel);
+            log.error("Failed to create sqlNode for data model {}, error: {}", dataModel, e.getMessage(), e);
         }
 
         return tableView;

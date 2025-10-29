@@ -68,6 +68,11 @@ public class DataSetImportConfig {
         private String description;
 
         /**
+         * 数据库ID（可选，如果不指定则使用默认的databaseId）
+         */
+        private Long databaseId;
+
+        /**
          * 数据库Schema
          */
         private DbSchema dbSchema;
@@ -129,6 +134,16 @@ public class DataSetImportConfig {
          * 时间粒度（用于data_time）
          */
         private String timeGranularity;
+
+        /**
+         * 是否创建指标（用于measure字段，对应前端"快速创建"checkbox）
+         */
+        private Boolean isCreateMetric;
+
+        /**
+         * 是否创建维度（用于dimension字段，对应前端"快速创建"checkbox）
+         */
+        private Boolean isCreateDimension;
     }
 
     @Data

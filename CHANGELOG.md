@@ -12,31 +12,67 @@
   - 新增 `ModelImportService` 和实现类，支持两种导入格式
   - 新增 `DataSetImportConfig` 配置类，支持一个数据集包含多个模型
   - 新增前端 `ModelImportModal` 组件，提供友好的导入界面
-  - 自动创建模型、衍生指标和数据集，无需手动配置
+  - 自动创建模型、度量、维度和数据集，无需手动配置
   - 在数据集管理页面添加"导入数据集"按钮
   - 提供股票数据分析示例配置文件（`stock_dataset_import.json`）
+  - 支持字段级别的 `isCreateMetric` 和 `isCreateDimension` 控制标志
+  - 支持为每个度量字段指定聚合方式（AVG、SUM、MAX、MIN等）
   
 - **级联删除功能** - 删除模型时自动删除关联的指标和维度
   - 修改 `ModelServiceImpl.deleteModel()` 方法，支持级联删除
   - 避免"存在基于该模型创建的指标和维度，暂不能删除"的错误提示
   - 提升用户体验，一键清理所有关联数据
 
+- **维度别名匹配** - 支持通过别名识别维度字段
+  - 修改 `SqlQueryParser` 的字段匹配逻辑，支持 name、bizName、alias 三种匹配方式
+  - 添加 `matchesField()` 和 `removeMatchedFields()` 辅助方法
+  - 解决 LLM 生成的字段名与模型定义不一致的问题（如"数据日期" vs "交易日期"）
+
 ### Enhanced
 - **模型字段自动填充** - 创建模型时自动填充字段名称
   - 修改 `ModelFieldForm.tsx`，勾选"快速创建"时自动填入字段注释或字段名
   - 减少手动输入，提升建模效率
   
-- **数据库选择优化** - 导入数据集时必须选择数据库
-  - 在导入弹窗中添加数据库选择下拉框
-  - 自动加载数据库列表并默认选择第一个
-  - 避免 `databaseId=0` 导致的导入失败问题
+- **数据库自动匹配** - 导入数据集时智能匹配数据库连接
+  - 根据模型配置中的 `dbSchema.db` 自动匹配对应的数据库连接
+  - 如果匹配失败，自动使用用户第一个有权限的数据库
+  - 移除前端手动选择数据库的步骤，简化导入流程
+  - 修复 `databaseId=0` 导致的 `Source must not be null` 异常
+
+- **模型数据完整性** - 确保导入的模型在前端完整显示
+  - 修复 `ModelConverter.convert()` 方法，手动设置 measures、dimensions、identifiers 集合
+  - 解决 `BeanMapper.mapper` 无法正确复制集合类型字段的问题
+  - 修复 `ModelServiceImpl.updateModelByDimAndMetric()` 清空 measures 的危险逻辑
+  - 确保前端"模型编辑"页面能正确显示所有度量和维度字段
+  - 为导入的维度设置 `isCreateDimension=1`，为指标设置 `status=ONLINE`
+
+- **主模型选择逻辑优化** - 修复多模型数据集中主表选择错误
+  - 修复 `DataModelNode.findBaseModel()` 中的 bug，将错误的 `modelMetricCount` 改为 `modelDimCount`
+  - 添加详细日志追踪模型选择过程
+  - 确保基于维度优先级正确选择事实表
 
 ### Fixed
 - **数据库并发锁问题修复** - 删除指标/维度时的锁等待超时
   - 在 `deleteModelDetailByDimAndMetric()` 方法添加 `synchronized` 同步锁
   - 添加重试机制（最多3次，递增延迟）
-  - 添加异常捕获，避免阻塞删除流程
+  - 添加异常捕获和详细日志，避免阻塞删除流程
   - 添加空值检查，避免 NPE 错误
+
+- **SQL 关键字冲突修复** - 修复 `date` 等保留字段名导致的解析错误
+  - 在 `ModelImportServiceImpl.buildSqlFromDbSchema()` 中为列名和表名添加反引号
+  - 在 `SqlBuilder.render()` 中为字段引用添加反引号
+  - 解决 Calcite 解析 `Encountered ". date"` 错误
+  - 支持使用 `date`、`order`、`status` 等 SQL 保留字作为字段名
+
+- **模型 YAML 转换修复** - 修复 bizName 和 databaseId 丢失问题
+  - 修改 `ModelYamlManager.convert2YamlObj()` 正确设置 bizName 和 databaseId
+  - 修改 `SemanticSchemaManager.getDataModel()` 正确恢复 bizName 和 databaseId
+  - 解决查询时模型 bizName 为 null 导致的错误
+
+- **度量字段创建修复** - 导入时正确创建度量指标
+  - 在 `ModelImportServiceImpl` 中为 Measure 对象设置 `isCreateMetric=1`
+  - 确保 `ModelConverter.convertMetricList()` 能正确识别并创建指标
+  - 修复导入后 `model_detail.measures` 为空的问题
 
 - **模型 SQL 简化指南** - 解决 Calcite 解析复杂 SQL 的问题
   - 提供简化版模型 SQL 示例
@@ -45,22 +81,30 @@
 
 ### Documentation
 - 新增 `模型导入功能使用说明.md` - 完整的导入功能文档
-- 新增 `SuperSonic_使用完整示例.md` - 从建模到查询的完整教程
-- 新增 `stock_semantic_model_simple.sql` - 简化版模型 SQL 示例
-- 更新 `README.md` in model_sql - 模型和查询 SQL 说明文档
+- 新增 `cross_database_analysis_import.json` - 跨数据库导入示例
+- 更新 `README.md` in model_sql - 数据集导入和 SQL 说明文档
 
 ### Technical Details
 - 支持两种导入格式：
   - **新格式**（推荐）：一个 JSON 对象包含数据集配置和多个模型
   - **旧格式**（兼容）：JSON 数组，每个元素是独立模型
+- JSON 配置支持：
+  - `isCreateMetric` - 控制是否为 measure 字段创建指标
+  - `isCreateDimension` - 控制是否为 dimension 字段创建维度
+  - `agg` - 度量字段的聚合方式（AVG、SUM、MAX、MIN等）
+  - `comment` - 字段注释说明
 - API 端点：
-  - `POST /api/semantic/model/import/uploadJson` - 导入数据集
+  - `POST /api/semantic/model/import/uploadJson` - 导入数据集（databaseId 可选）
   - `POST /api/semantic/model/import/previewJson` - 预览配置
   - `GET /api/semantic/model/import/downloadTemplate` - 下载模板
+- 智能数据库匹配逻辑：
+  1. 优先使用配置中明确指定的 `databaseId`
+  2. 根据 `dbSchema.db` 自动匹配数据库名称
+  3. 使用用户第一个有权限的数据库作为后备
 
 ### Known Issues
 - 预览功能暂时存在错误，建议直接导入（不影响主要功能）
-- 导入后如需删除，建议等待几秒让事务完全提交
+- Calcite 优化器在验证跨数据库 schema 时可能报 `Object 'xxx' not found` 警告（不影响查询执行）
 
 ---
 

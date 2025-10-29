@@ -13,8 +13,12 @@ public class DataModelYamlTpl {
     private Long id;
 
     private String name;
+    
+    private String bizName;
 
     private Long sourceId;
+    
+    private Long databaseId;
 
     private String type;
 

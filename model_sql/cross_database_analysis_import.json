@@ -1,0 +1,100 @@
+{
+  "dataSetConfig": {
+    "name": "跨数据源股票分析",
+    "bizName": "CrossDatabaseStockAnalysis",
+    "description": "跨MySQL和Trino数据源的股票分析数据集，支持实时和历史数据联合分析",
+    "includesAll": true,
+    "metrics": [
+      {
+        "name": "实时价格变化率",
+        "bizName": "realtime_price_change",
+        "expr": "((实时价格 - 历史收盘价) / 历史收盘价) * 100",
+        "description": "基于实时数据和历史数据的价格变化率"
+      },
+      {
+        "name": "成交量异常倍数",
+        "bizName": "volume_anomaly_ratio",
+        "expr": "实时成交量 / AVG(历史成交量)",
+        "description": "实时成交量相对于历史平均成交量的倍数"
+      },
+      {
+        "name": "价格波动率",
+        "bizName": "price_volatility",
+        "expr": "STDDEV(历史收盘价) / AVG(历史收盘价) * 100",
+        "description": "基于历史数据计算的价格波动率"
+      }
+    ]
+  },
+  "models": [
+    {
+      "name": "股票历史数据",
+      "bizName": "StockHistoricalData",
+      "description": "MySQL中的股票历史交易数据",
+      "isPrimary": true,
+      "dbSchema": {
+        "db": "stocks_data",
+        "table": "stock_zh_a_daily",
+        "dbColumns": [
+          {"columnName": "date", "dataType": "DATE", "comment": "交易日期"},
+          {"columnName": "code", "dataType": "VARCHAR", "comment": "股票代码"},
+          {"columnName": "close", "dataType": "DECIMAL", "comment": "收盘价"},
+          {"columnName": "volume", "dataType": "BIGINT", "comment": "成交量"},
+          {"columnName": "amount", "dataType": "DECIMAL", "comment": "成交额"}
+        ]
+      },
+      "fields": [
+        {"columnName": "date", "dataType": "DATE", "fieldType": "data_time", "name": "交易日期", "dateFormat": "yyyy-MM-dd", "timeGranularity": "day"},
+        {"columnName": "code", "dataType": "VARCHAR", "fieldType": "primary_key", "name": "股票代码"},
+        {"columnName": "close", "dataType": "DECIMAL", "fieldType": "measure", "name": "历史收盘价", "agg": ""},
+        {"columnName": "volume", "dataType": "BIGINT", "fieldType": "measure", "name": "历史成交量", "agg": ""},
+        {"columnName": "amount", "dataType": "DECIMAL", "fieldType": "measure", "name": "历史成交额", "agg": ""}
+      ]
+    },
+    {
+      "name": "股票实时数据",
+      "bizName": "StockRealtimeData",
+      "description": "Trino中的股票实时数据",
+      "isPrimary": false,
+      "joinCondition": "历史数据.股票代码 = 实时数据.股票代码",
+      "dbSchema": {
+        "db": "realtime",
+        "table": "stock_realtime",
+        "dbColumns": [
+          {"columnName": "code", "dataType": "VARCHAR", "comment": "股票代码"},
+          {"columnName": "current_price", "dataType": "DECIMAL", "comment": "实时价格"},
+          {"columnName": "realtime_volume", "dataType": "BIGINT", "comment": "实时成交量"},
+          {"columnName": "update_time", "dataType": "TIMESTAMP", "comment": "更新时间"}
+        ]
+      },
+      "fields": [
+        {"columnName": "code", "dataType": "VARCHAR", "fieldType": "foreign_key", "name": "股票代码"},
+        {"columnName": "current_price", "dataType": "DECIMAL", "fieldType": "measure", "name": "实时价格", "agg": ""},
+        {"columnName": "realtime_volume", "dataType": "BIGINT", "fieldType": "measure", "name": "实时成交量", "agg": ""},
+        {"columnName": "update_time", "dataType": "TIMESTAMP", "fieldType": "data_time", "name": "更新时间", "dateFormat": "yyyy-MM-dd HH:mm:ss", "timeGranularity": "minute"}
+      ]
+    },
+    {
+      "name": "股票基本信息",
+      "bizName": "StockBasicInfo",
+      "description": "MySQL中的股票基本信息",
+      "isPrimary": false,
+      "joinCondition": "历史数据.股票代码 = 基本信息.股票代码",
+      "dbSchema": {
+        "db": "stocks_data",
+        "table": "stock_info",
+        "dbColumns": [
+          {"columnName": "code", "dataType": "VARCHAR", "comment": "股票代码"},
+          {"columnName": "name", "dataType": "VARCHAR", "comment": "股票名称"},
+          {"columnName": "industry", "dataType": "VARCHAR", "comment": "所属行业"},
+          {"columnName": "market", "dataType": "VARCHAR", "comment": "市场"}
+        ]
+      },
+      "fields": [
+        {"columnName": "code", "dataType": "VARCHAR", "fieldType": "foreign_key", "name": "股票代码"},
+        {"columnName": "name", "dataType": "VARCHAR", "fieldType": "dimension", "name": "股票名称"},
+        {"columnName": "industry", "dataType": "VARCHAR", "fieldType": "dimension", "name": "所属行业"},
+        {"columnName": "market", "dataType": "VARCHAR", "fieldType": "dimension", "name": "市场"}
+      ]
+    }
+  ]
+}

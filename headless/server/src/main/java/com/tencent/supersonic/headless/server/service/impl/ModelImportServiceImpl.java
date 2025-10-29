@@ -17,16 +17,19 @@ import com.tencent.supersonic.headless.api.pojo.request.ModelReq;
 import com.tencent.supersonic.headless.api.pojo.request.DataSetReq;
 import com.tencent.supersonic.headless.api.pojo.response.DataSetResp;
 import com.tencent.supersonic.headless.api.pojo.response.ModelResp;
+import com.tencent.supersonic.headless.api.pojo.response.DatabaseResp;
 import com.tencent.supersonic.headless.server.pojo.ModelImportConfig;
 import com.tencent.supersonic.headless.server.pojo.DataSetImportConfig;
 import com.tencent.supersonic.headless.server.service.ModelImportService;
 import com.tencent.supersonic.headless.server.service.ModelService;
 import com.tencent.supersonic.headless.server.service.MetricService;
 import com.tencent.supersonic.headless.server.service.DataSetService;
+import com.tencent.supersonic.headless.server.service.DatabaseService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,13 +45,15 @@ public class ModelImportServiceImpl implements ModelImportService {
     private final ModelService modelService;
     private final MetricService metricService;
     private final DataSetService dataSetService;
+    private final DatabaseService databaseService;
     private final ObjectMapper objectMapper;
 
     public ModelImportServiceImpl(ModelService modelService, MetricService metricService, 
-                                   DataSetService dataSetService) {
+                                   DataSetService dataSetService, DatabaseService databaseService) {
         this.modelService = modelService;
         this.metricService = metricService;
         this.dataSetService = dataSetService;
+        this.databaseService = databaseService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -109,7 +114,7 @@ public class ModelImportServiceImpl implements ModelImportService {
         
         // 1. 创建所有模型
         for (DataSetImportConfig.ModelConfig modelConfig : config.getModels()) {
-            ModelReq modelReq = convertModelConfigToReq(modelConfig, domainId, databaseId);
+            ModelReq modelReq = convertModelConfigToReq(modelConfig, domainId, databaseId, user);
             ModelResp modelResp = modelService.createModel(modelReq, user);
             modelResps.add(modelResp);
             modelIds.add(modelResp.getId());
@@ -133,15 +138,92 @@ public class ModelImportServiceImpl implements ModelImportService {
     }
 
     /**
+     * 智能确定databaseId
+     * 1. 优先使用模型配置中显式指定的databaseId
+     * 2. 其次根据dbSchema.db自动匹配数据库连接
+     * 3. 最后使用默认的databaseId（如果为0或null，则使用用户第一个有权限的数据库）
+     */
+    private Long determineDatabaseId(DataSetImportConfig.ModelConfig modelConfig, Long defaultDatabaseId, User user) {
+        // 1. 如果显式指定了databaseId，直接使用
+        if (modelConfig.getDatabaseId() != null) {
+            log.info("使用显式指定的databaseId: {}", modelConfig.getDatabaseId());
+            return modelConfig.getDatabaseId();
+        }
+        
+        // 2. 根据dbSchema.db自动匹配
+        if (modelConfig.getDbSchema() != null && StringUtils.isNotBlank(modelConfig.getDbSchema().getDb())) {
+            String targetDbName = modelConfig.getDbSchema().getDb();
+            Long matchedDatabaseId = findDatabaseIdByDbName(targetDbName, user);
+            if (matchedDatabaseId != null) {
+                log.info("根据数据库名 '{}' 自动匹配到databaseId: {}", targetDbName, matchedDatabaseId);
+                return matchedDatabaseId;
+            } else {
+                log.warn("未找到数据库名 '{}' 对应的连接", targetDbName);
+            }
+        }
+        
+        // 3. 使用默认值，如果默认值无效（0或null），则获取用户第一个有权限的数据库
+        if (defaultDatabaseId == null || defaultDatabaseId == 0) {
+            Long firstDatabaseId = getFirstAvailableDatabaseId(user);
+            if (firstDatabaseId != null) {
+                log.info("默认databaseId无效，使用用户第一个有权限的数据库: {}", firstDatabaseId);
+                return firstDatabaseId;
+            } else {
+                throw new InvalidArgumentException("无法确定数据库连接：未找到匹配的数据库，且用户没有可用的数据库连接");
+            }
+        }
+        
+        log.info("使用默认databaseId: {}", defaultDatabaseId);
+        return defaultDatabaseId;
+    }
+    
+    /**
+     * 根据数据库名查找对应的databaseId
+     */
+    private Long findDatabaseIdByDbName(String dbName, User user) {
+        try {
+            // 获取所有数据库连接
+            List<DatabaseResp> databases = databaseService.getDatabaseList(user);
+            for (DatabaseResp database : databases) {
+                if (dbName.equals(database.getDatabase())) {
+                    return database.getId();
+                }
+            }
+        } catch (Exception e) {
+            log.error("查找数据库连接时出错: {}", e.getMessage(), e);
+        }
+        return null;
+    }
+    
+    /**
+     * 获取用户第一个有权限的数据库ID
+     */
+    private Long getFirstAvailableDatabaseId(User user) {
+        try {
+            List<DatabaseResp> databases = databaseService.getDatabaseList(user);
+            if (databases != null && !databases.isEmpty()) {
+                return databases.get(0).getId();
+            }
+        } catch (Exception e) {
+            log.error("获取数据库列表时出错: {}", e.getMessage(), e);
+        }
+        return null;
+    }
+
+    /**
      * 将新格式的ModelConfig转换为ModelReq
      */
     private ModelReq convertModelConfigToReq(DataSetImportConfig.ModelConfig modelConfig, 
-                                              Long domainId, Long databaseId) {
+                                              Long domainId, Long defaultDatabaseId, User user) {
         ModelReq modelReq = new ModelReq();
         modelReq.setName(modelConfig.getName());
         modelReq.setBizName(modelConfig.getBizName());
         modelReq.setDescription(modelConfig.getDescription());
         modelReq.setDomainId(domainId);
+        
+        // 智能匹配databaseId：优先使用配置中的，其次根据dbSchema.db自动匹配，最后使用默认值
+        Long databaseId = determineDatabaseId(modelConfig, defaultDatabaseId, user);
+        log.info("模型 '{}' 最终确定的databaseId: {}", modelConfig.getName(), databaseId);
         modelReq.setDatabaseId(databaseId);
         modelReq.setStatus(StatusEnum.ONLINE.getCode());
         
@@ -159,6 +241,8 @@ public class ModelImportServiceImpl implements ModelImportService {
         List<Dimension> dimensions = new ArrayList<>();
         List<Measure> measures = new ArrayList<>();
         
+        log.info("模型 '{}' 开始处理 {} 个字段", modelConfig.getName(), modelConfig.getFields().size());
+        
         for (DataSetImportConfig.FieldConfig fieldConfig : modelConfig.getFields()) {
             // 添加字段
             Field field = new Field();
@@ -168,24 +252,43 @@ public class ModelImportServiceImpl implements ModelImportService {
             
             // 根据字段类型添加到对应列表
             String fieldType = fieldConfig.getFieldType();
+            log.info("处理字段: {} (columnName={}, fieldType={})", 
+                    fieldConfig.getName(), fieldConfig.getColumnName(), fieldType);
+            
             if ("primary_key".equals(fieldType)) {
                 Identify identify = new Identify();
                 identify.setName(fieldConfig.getName());
                 identify.setBizName(fieldConfig.getColumnName());
                 identify.setType(IdentifyType.primary.name());
+                
+                // 主键默认创建维度，除非明确设置为false
+                int isCreateDimension = (fieldConfig.getIsCreateDimension() != null && fieldConfig.getIsCreateDimension()) ? 1 : 0;
+                identify.setIsCreateDimension(isCreateDimension);
+                
                 identifiers.add(identify);
+                log.info("  → 添加到 identifiers (primary_key, isCreateDimension={})", isCreateDimension);
             } else if ("foreign_key".equals(fieldType)) {
                 Identify identify = new Identify();
                 identify.setName(fieldConfig.getName());
                 identify.setBizName(fieldConfig.getColumnName());
                 identify.setType(IdentifyType.foreign.name());
+                
+                // 外键默认创建维度，除非明确设置为false
+                int isCreateDimension = (fieldConfig.getIsCreateDimension() != null && fieldConfig.getIsCreateDimension()) ? 1 : 0;
+                identify.setIsCreateDimension(isCreateDimension);
+                
                 identifiers.add(identify);
+                log.info("  → 添加到 identifiers (foreign_key, isCreateDimension={})", isCreateDimension);
             } else if ("dimension".equals(fieldType) || "data_time".equals(fieldType)) {
                 Dimension dimension = new Dimension();
                 dimension.setName(fieldConfig.getName());
                 dimension.setBizName(fieldConfig.getColumnName());
                 dimension.setExpr(fieldConfig.getColumnName());
                 dimension.setDescription(fieldConfig.getComment());
+                
+                // 从JSON配置读取isCreateDimension标志，默认为true
+                int isCreateDimension = (fieldConfig.getIsCreateDimension() != null && fieldConfig.getIsCreateDimension()) ? 1 : 0;
+                dimension.setIsCreateDimension(isCreateDimension);
                 
                 if ("data_time".equals(fieldType)) {
                     dimension.setType(DimensionType.time);
@@ -201,15 +304,27 @@ public class ModelImportServiceImpl implements ModelImportService {
                 }
                 
                 dimensions.add(dimension);
+                log.info("  → 添加到 dimensions ({}, isCreateDimension={})", fieldType, isCreateDimension);
             } else if ("measure".equals(fieldType)) {
                 Measure measure = new Measure();
                 measure.setName(fieldConfig.getName());
                 measure.setBizName(fieldConfig.getColumnName());
                 measure.setExpr(fieldConfig.getColumnName());
                 measure.setAgg(fieldConfig.getAgg());
+                
+                // 从JSON配置读取isCreateMetric标志，默认为true
+                int isCreateMetric = (fieldConfig.getIsCreateMetric() != null && fieldConfig.getIsCreateMetric()) ? 1 : 0;
+                measure.setIsCreateMetric(isCreateMetric);
+                
                 measures.add(measure);
+                log.info("  → 添加到 measures (agg={}, isCreateMetric={})", fieldConfig.getAgg(), isCreateMetric);
+            } else {
+                log.warn("  → 未知的fieldType: {}", fieldType);
             }
         }
+        
+        log.info("模型 '{}' 字段处理完成: identifiers={}, dimensions={}, measures={}", 
+                modelConfig.getName(), identifiers.size(), dimensions.size(), measures.size());
         
         modelDetail.setFields(fields);
         modelDetail.setIdentifiers(identifiers);
@@ -270,6 +385,7 @@ public class ModelImportServiceImpl implements ModelImportService {
             metricReq.setBizName(metricConfig.getBizName());
             metricReq.setDescription(metricConfig.getDescription());
             metricReq.setModelId(modelId);
+            metricReq.setStatus(StatusEnum.ONLINE.getCode());  // ← 设置为上线状态
             metricReq.setMetricDefineType(MetricDefineType.MEASURE);
             
             MetricDefineByMeasureParams measureParams = new MetricDefineByMeasureParams();
@@ -425,6 +541,7 @@ public class ModelImportServiceImpl implements ModelImportService {
                 dimension.setBizName(fieldSchema.getColumnName());
                 dimension.setExpr(fieldSchema.getColumnName());
                 dimension.setDescription(fieldSchema.getComment());
+                dimension.setIsCreateDimension(1);  // ← 关键：设置为1才会创建维度
                 
                 // 时间维度特殊处理
                 if ("data_time".equals(filedType)) {
@@ -447,6 +564,7 @@ public class ModelImportServiceImpl implements ModelImportService {
                 measure.setBizName(fieldSchema.getColumnName());
                 measure.setExpr(fieldSchema.getColumnName());
                 measure.setAgg(fieldSchema.getAgg());
+                measure.setIsCreateMetric(1);  // ← 关键：必须设置为1才会创建metric
                 measures.add(measure);
             }
         }
@@ -472,15 +590,15 @@ public class ModelImportServiceImpl implements ModelImportService {
             return table;
         }
         
-        // 否则构建简单的SELECT语句
-        List<String> columns = dbSchema.getDbColumns().stream()
-                .map(DBColumn::getColumnName)
-                .collect(Collectors.toList());
+        // 否则构建简单的SELECT语句，给所有字段名和表名添加反引号（避免保留字冲突）
+        String columnsSql = dbSchema.getDbColumns().stream()
+                .map(col -> "`" + col.getColumnName() + "`")
+                .collect(Collectors.joining(", "));
         
         String db = dbSchema.getDb();
-        String fullTableName = db != null ? db + "." + table : table;
+        String fullTableName = db != null ? "`" + db + "`.`" + table + "`" : "`" + table + "`";
         
-        return "SELECT " + String.join(", ", columns) + " FROM " + fullTableName;
+        return "SELECT " + columnsSql + " FROM " + fullTableName;
     }
 
     /**

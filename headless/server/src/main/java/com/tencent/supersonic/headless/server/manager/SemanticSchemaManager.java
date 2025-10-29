@@ -91,6 +91,8 @@ public class SemanticSchemaManager {
         ModelResp dataModel = new ModelResp();
         dataModel.setId(d.getId());
         dataModel.setName(d.getName());
+        dataModel.setBizName(d.getBizName());
+        dataModel.setDatabaseId(d.getDatabaseId());
         ModelDetail modelDetail = new ModelDetail();
         dataModel.setModelDetail(modelDetail);
 

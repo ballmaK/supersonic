@@ -222,7 +222,7 @@ public class DataModelNode extends SemanticNode {
                     modelDimCount.put(m.getModelBizName(), count + 1);
                 }
             });
-            baseModelName = modelMetricCount.entrySet().stream()
+            baseModelName = modelDimCount.entrySet().stream()
                     .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                     .map(e -> e.getKey()).findFirst();
             if (baseModelName.isPresent()) {

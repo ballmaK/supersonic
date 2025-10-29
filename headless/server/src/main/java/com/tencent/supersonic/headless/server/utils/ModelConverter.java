@@ -17,6 +17,7 @@ import com.tencent.supersonic.headless.api.pojo.response.DomainResp;
 import com.tencent.supersonic.headless.api.pojo.response.MeasureResp;
 import com.tencent.supersonic.headless.api.pojo.response.ModelResp;
 import com.tencent.supersonic.headless.server.persistence.dataobject.ModelDO;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.util.CollectionUtils;
@@ -24,6 +25,7 @@ import org.springframework.util.CollectionUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class ModelConverter {
 
     public static ModelDO convert(ModelReq modelReq, User user) {
@@ -296,6 +298,11 @@ public class ModelConverter {
         List<Field> fields = modelReq.getModelDetail().getFields();
         List<String> fieldNames = fields.stream().map(Field::getFieldName).collect(Collectors.toList());
 
+        log.info("ModelConverter.convert - 输入: measures={}, dimensions={}, identifiers={}", 
+                measures != null ? measures.size() : 0,
+                dimensions != null ? dimensions.size() : 0,
+                identifiers != null ? identifiers.size() : 0);
+
         if (measures != null) {
             for (Measure measure : measures) {
                 if (StringUtils.isNotBlank(measure.getBizName())
@@ -330,7 +337,29 @@ public class ModelConverter {
             }
         }
 
+        log.info("ModelConverter.convert - BeanMapper.mapper之前: source.measures={}", 
+                modelReq.getModelDetail().getMeasures() != null ? modelReq.getModelDetail().getMeasures().size() : 0);
+        
         BeanMapper.mapper(modelReq.getModelDetail(), modelDetail);
+        
+        // BeanMapper可能对集合类型处理有问题，手动设置measures、dimensions、identifiers
+        if (measures != null) {
+            modelDetail.setMeasures(measures);
+        }
+        if (dimensions != null) {
+            modelDetail.setDimensions(dimensions);
+        }
+        if (identifiers != null) {
+            modelDetail.setIdentifiers(identifiers);
+        }
+        
+        log.info("ModelConverter.convert - 手动设置后: target.measures={}", 
+                modelDetail.getMeasures() != null ? modelDetail.getMeasures().size() : 0);
+        log.info("ModelConverter.convert - 输出: measures={}, dimensions={}, identifiers={}", 
+                modelDetail.getMeasures() != null ? modelDetail.getMeasures().size() : 0,
+                modelDetail.getDimensions() != null ? modelDetail.getDimensions().size() : 0,
+                modelDetail.getIdentifiers() != null ? modelDetail.getIdentifiers().size() : 0);
+        
         return modelDetail;
     }
 }

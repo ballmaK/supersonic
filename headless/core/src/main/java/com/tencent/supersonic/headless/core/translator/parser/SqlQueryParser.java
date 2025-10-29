@@ -192,24 +192,68 @@ public class SqlQueryParser implements QueryParser {
         queryStatement.getSqlQuery().setSql(newSql);
     }
 
+    /**
+     * 检查查询字段是否匹配schema元素（支持name、bizName、alias）
+     */
+    private boolean matchesField(Set<String> fields, String name, String bizName, String alias) {
+        if (fields.contains(name) || fields.contains(bizName)) {
+            return true;
+        }
+        
+        // 检查alias
+        if (StringUtils.isNotBlank(alias)) {
+            List<String> aliasList = SchemaItem.getAliasList(alias);
+            for (String aliasItem : aliasList) {
+                if (fields.contains(aliasItem)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 从fields集合中移除所有匹配项（name、bizName、alias）
+     */
+    private void removeMatchedFields(Set<String> fields, String name, String bizName, String alias) {
+        fields.remove(name);
+        fields.remove(bizName);
+        
+        if (StringUtils.isNotBlank(alias)) {
+            List<String> aliasList = SchemaItem.getAliasList(alias);
+            for (String aliasItem : aliasList) {
+                fields.remove(aliasItem);
+            }
+        }
+    }
+
     private OntologyQuery buildOntologyQuery(Ontology ontology, List<String> queryFields) {
         OntologyQuery ontologyQuery = new OntologyQuery();
         Set<String> fields = Sets.newHashSet(queryFields);
+        
+        log.info("buildOntologyQuery - 查询字段: {}", queryFields);
+        log.info("buildOntologyQuery - Ontology中的模型: {}", ontology.getModelMap().keySet());
 
         // find belonging model for every querying metrics
         ontology.getMetricMap().entrySet().forEach(entry -> {
             String modelName = entry.getKey();
+            log.info("buildOntologyQuery - 检查模型 {} 的指标", modelName);
             entry.getValue().forEach(m -> {
-                if (fields.contains(m.getName()) || fields.contains(m.getBizName())) {
+                if (matchesField(fields, m.getName(), m.getBizName(), m.getAlias())) {
+                    log.info("buildOntologyQuery - 匹配到指标: {} (name={}, bizName={}, alias={}) in model {}", 
+                            m.getName(), m.getName(), m.getBizName(), m.getAlias(), modelName);
                     ontologyQuery.getModelMap().put(modelName,
                             ontology.getModelMap().get(modelName));
                     ontologyQuery.getMetricMap().computeIfAbsent(modelName, k -> Sets.newHashSet())
                             .add(m);
-                    fields.remove(m.getName());
-                    fields.remove(m.getBizName());
+                    removeMatchedFields(fields, m.getName(), m.getBizName(), m.getAlias());
                 }
             });
         });
+        
+        log.info("buildOntologyQuery - 指标匹配后剩余字段: {}", fields);
+        log.info("buildOntologyQuery - 指标匹配后的模型: {}", ontologyQuery.getModelMap().keySet());
 
         // first try to find all querying dimensions in the models with querying metrics.
         ontology.getDimensionMap().entrySet().stream()
@@ -217,13 +261,12 @@ public class SqlQueryParser implements QueryParser {
                 .forEach(entry -> {
                     String modelName = entry.getKey();
                     entry.getValue().forEach(d -> {
-                        if (fields.contains(d.getName()) || fields.contains(d.getBizName())) {
+                        if (matchesField(fields, d.getName(), d.getBizName(), d.getAlias())) {
                             ontologyQuery.getModelMap().put(modelName,
                                     ontology.getModelMap().get(modelName));
                             ontologyQuery.getDimensionMap()
                                     .computeIfAbsent(modelName, k -> Sets.newHashSet()).add(d);
-                            fields.remove(d.getName());
-                            fields.remove(d.getBizName());
+                            removeMatchedFields(fields, d.getName(), d.getBizName(), d.getAlias());
                         }
                     });
                 });
@@ -231,45 +274,63 @@ public class SqlQueryParser implements QueryParser {
         // second, try to find a model that has all the remaining fields, such that no further join
         // is needed.
         if (!fields.isEmpty()) {
+            log.info("buildOntologyQuery - 步骤3：查找包含所有剩余字段的单个模型");
             Map<String, Set<DimSchemaResp>> model2dims = new HashMap<>();
             ontology.getDimensionMap().entrySet().forEach(entry -> {
                 String modelName = entry.getKey();
                 entry.getValue().forEach(d -> {
-                    if (fields.contains(d.getName()) || fields.contains(d.getBizName())) {
+                    if (matchesField(fields, d.getName(), d.getBizName(), d.getAlias())) {
+                        String matchedBy = fields.contains(d.getName()) ? d.getName() : 
+                                          fields.contains(d.getBizName()) ? d.getBizName() : "别名";
+                        log.info("buildOntologyQuery - 字段 '{}' 匹配到模型 {} 的维度: {} (bizName={}, alias={})", 
+                                matchedBy, modelName, d.getName(), d.getBizName(), d.getAlias());
                         model2dims.computeIfAbsent(modelName, k -> Sets.newHashSet()).add(d);
                     }
                 });
             });
+            log.info("buildOntologyQuery - model2dims统计: {}", 
+                    model2dims.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().size())));
             Optional<Map.Entry<String, Set<DimSchemaResp>>> modelEntry = model2dims.entrySet()
                     .stream().filter(entry -> entry.getValue().size() == fields.size()).findFirst();
             if (modelEntry.isPresent()) {
+                log.info("buildOntologyQuery - 找到包含所有字段的模型: {}", modelEntry.get().getKey());
                 ontologyQuery.getDimensionMap().put(modelEntry.get().getKey(),
                         modelEntry.get().getValue());
                 ontologyQuery.getModelMap().put(modelEntry.get().getKey(),
                         ontology.getModelMap().get(modelEntry.get().getKey()));
                 fields.clear();
+            } else {
+                log.info("buildOntologyQuery - 未找到包含所有字段的单个模型");
             }
         }
 
         // finally if there are still fields not found belonging models, try to find in the models
         // iteratively
         if (!fields.isEmpty()) {
+            log.info("buildOntologyQuery - 步骤4：逐个模型查找剩余字段: {}", fields);
             ontology.getDimensionMap().entrySet().forEach(entry -> {
                 String modelName = entry.getKey();
                 if (!ontologyQuery.getDimensionMap().containsKey(modelName)) {
                     entry.getValue().forEach(d -> {
-                        if (fields.contains(d.getName()) || fields.contains(d.getBizName())) {
+                        if (matchesField(fields, d.getName(), d.getBizName(), d.getAlias())) {
+                            String matchedBy = fields.contains(d.getName()) ? d.getName() : 
+                                              fields.contains(d.getBizName()) ? d.getBizName() : "别名";
+                            log.info("buildOntologyQuery - 字段 '{}' 匹配到模型 {} 的维度: {} (bizName={}, alias={})", 
+                                    matchedBy, modelName, d.getName(), d.getBizName(), d.getAlias());
                             ontologyQuery.getModelMap().put(modelName,
                                     ontology.getModelMap().get(modelName));
                             ontologyQuery.getDimensionMap()
                                     .computeIfAbsent(modelName, k -> Sets.newHashSet()).add(d);
-                            fields.remove(d.getName());
-                            fields.remove(d.getBizName());
+                            removeMatchedFields(fields, d.getName(), d.getBizName(), d.getAlias());
                         }
                     });
                 }
             });
         }
+        
+        log.info("buildOntologyQuery - 最终匹配的模型: {}", ontologyQuery.getModelMap().keySet());
+        log.info("buildOntologyQuery - 最终未匹配的字段: {}", fields);
 
         return ontologyQuery;
     }

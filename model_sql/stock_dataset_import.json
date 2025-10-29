@@ -6,45 +6,51 @@
     "includesAll": true,
     "metrics": [
       {
+        "name": "涨幅",
+        "bizName": "change_pct_alias",
+        "expr": "change_pct",
+        "description": "股票涨幅（涨跌幅的别名，便于口语化查询）"
+      },
+      {
         "name": "最大涨幅",
         "bizName": "max_gain",
-        "expr": "MAX(涨跌幅)",
+        "expr": "MAX(change_pct)",
         "description": "时间段内的最大涨跌幅"
       },
       {
         "name": "最小涨幅",
         "bizName": "min_gain",
-        "expr": "MIN(涨跌幅)",
+        "expr": "MIN(change_pct)",
         "description": "时间段内的最小涨跌幅"
       },
       {
         "name": "平均涨跌幅",
         "bizName": "avg_change",
-        "expr": "AVG(涨跌幅)",
+        "expr": "AVG(change_pct)",
         "description": "时间段内的平均涨跌幅"
       },
       {
         "name": "累计涨跌幅",
         "bizName": "total_change",
-        "expr": "SUM(涨跌幅)",
+        "expr": "SUM(change_pct)",
         "description": "时间段内的累计涨跌幅"
       },
       {
         "name": "总成交量",
         "bizName": "total_volume",
-        "expr": "SUM(成交量)",
+        "expr": "SUM(volume)",
         "description": "时间段内的总成交量"
       },
       {
         "name": "总成交额",
         "bizName": "total_amount",
-        "expr": "SUM(成交额)",
+        "expr": "SUM(amount)",
         "description": "时间段内的总成交额"
       },
       {
         "name": "平均换手率",
         "bizName": "avg_turnover_rate",
-        "expr": "AVG(换手率)",
+        "expr": "AVG(turnover_rate)",
         "description": "时间段内的平均换手率"
       }
     ]
@@ -74,18 +80,114 @@
         ]
       },
       "fields": [
-        {"columnName": "date", "dataType": "DATE", "fieldType": "data_time", "name": "交易日期", "dateFormat": "yyyy-MM-dd", "timeGranularity": "day"},
-        {"columnName": "code", "dataType": "VARCHAR", "fieldType": "primary_key", "name": "股票代码"},
-        {"columnName": "open", "dataType": "DECIMAL", "fieldType": "measure", "name": "开盘价", "agg": ""},
-        {"columnName": "high", "dataType": "DECIMAL", "fieldType": "measure", "name": "最高价", "agg": ""},
-        {"columnName": "low", "dataType": "DECIMAL", "fieldType": "measure", "name": "最低价", "agg": ""},
-        {"columnName": "close", "dataType": "DECIMAL", "fieldType": "measure", "name": "收盘价", "agg": ""},
-        {"columnName": "change_pct", "dataType": "DECIMAL", "fieldType": "measure", "name": "涨跌幅", "agg": ""},
-        {"columnName": "change_amount", "dataType": "DECIMAL", "fieldType": "measure", "name": "涨跌额", "agg": ""},
-        {"columnName": "amplitude", "dataType": "DECIMAL", "fieldType": "measure", "name": "振幅", "agg": ""},
-        {"columnName": "volume", "dataType": "BIGINT", "fieldType": "measure", "name": "成交量", "agg": ""},
-        {"columnName": "amount", "dataType": "DECIMAL", "fieldType": "measure", "name": "成交额", "agg": ""},
-        {"columnName": "turnover_rate", "dataType": "DECIMAL", "fieldType": "measure", "name": "换手率", "agg": ""}
+        {
+          "columnName": "date", 
+          "dataType": "DATE", 
+          "fieldType": "data_time", 
+          "name": "数据日期", 
+          "comment": "股票数据的日期",
+          "dateFormat": "yyyy-MM-dd", 
+          "timeGranularity": "day",
+          "isCreateDimension": true
+        },
+        {
+          "columnName": "code", 
+          "dataType": "VARCHAR", 
+          "fieldType": "primary_key", 
+          "name": "股票代码",
+          "comment": "股票唯一标识代码",
+          "isCreateDimension": true
+        },
+        {
+          "columnName": "open", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "开盘价",
+          "comment": "当日开盘价格",
+          "agg": "AVG",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "high", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "最高价",
+          "comment": "当日最高价格",
+          "agg": "MAX",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "low", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "最低价",
+          "comment": "当日最低价格",
+          "agg": "MIN",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "close", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "收盘价",
+          "comment": "当日收盘价格",
+          "agg": "AVG",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "change_pct", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "涨跌幅",
+          "comment": "当日涨跌幅百分比",
+          "agg": "AVG",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "change_amount", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "涨跌额",
+          "comment": "当日涨跌金额",
+          "agg": "SUM",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "amplitude", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "振幅",
+          "comment": "当日振幅百分比",
+          "agg": "AVG",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "volume", 
+          "dataType": "BIGINT", 
+          "fieldType": "measure", 
+          "name": "成交量",
+          "comment": "当日成交量（手）",
+          "agg": "SUM",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "amount", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "成交额",
+          "comment": "当日成交金额（元）",
+          "agg": "SUM",
+          "isCreateMetric": true
+        },
+        {
+          "columnName": "turnover_rate", 
+          "dataType": "DECIMAL", 
+          "fieldType": "measure", 
+          "name": "换手率",
+          "comment": "当日换手率百分比",
+          "agg": "AVG",
+          "isCreateMetric": true
+        }
       ]
     },
     {
@@ -106,11 +208,46 @@
         ]
       },
       "fields": [
-        {"columnName": "code", "dataType": "VARCHAR", "fieldType": "foreign_key", "name": "股票代码"},
-        {"columnName": "name", "dataType": "VARCHAR", "fieldType": "dimension", "name": "股票名称"},
-        {"columnName": "industry", "dataType": "VARCHAR", "fieldType": "dimension", "name": "所属行业"},
-        {"columnName": "market", "dataType": "VARCHAR", "fieldType": "dimension", "name": "市场"},
-        {"columnName": "status", "dataType": "VARCHAR", "fieldType": "dimension", "name": "股票状态"}
+        {
+          "columnName": "code", 
+          "dataType": "VARCHAR", 
+          "fieldType": "foreign_key", 
+          "name": "股票代码",
+          "comment": "关联到交易数据的外键",
+          "isCreateDimension": true
+        },
+        {
+          "columnName": "name", 
+          "dataType": "VARCHAR", 
+          "fieldType": "dimension", 
+          "name": "股票名称",
+          "comment": "股票的中文名称",
+          "isCreateDimension": true
+        },
+        {
+          "columnName": "industry", 
+          "dataType": "VARCHAR", 
+          "fieldType": "dimension", 
+          "name": "所属行业",
+          "comment": "股票所属的行业分类",
+          "isCreateDimension": true
+        },
+        {
+          "columnName": "market", 
+          "dataType": "VARCHAR", 
+          "fieldType": "dimension", 
+          "name": "市场",
+          "comment": "股票所在市场（沪市/深市）",
+          "isCreateDimension": true
+        },
+        {
+          "columnName": "status", 
+          "dataType": "VARCHAR", 
+          "fieldType": "dimension", 
+          "name": "股票状态",
+          "comment": "股票当前状态（正常/停牌等）",
+          "isCreateDimension": true
+        }
       ]
     }
   ]

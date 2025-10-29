@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Modal, Upload, Button, message, Space, Alert, Table, Tag, Select } from 'antd';
+import React, { useState } from 'react';
+import { Modal, Upload, Button, message, Space, Alert, Table, Tag } from 'antd';
 import { UploadOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd';
-import { importModelsFromJson, previewImportJson, downloadImportTemplate, getDatabaseList } from '../service';
+import { importModelsFromJson, previewImportJson, downloadImportTemplate } from '../service';
 
 type Props = {
   visible: boolean;
@@ -24,29 +24,6 @@ const ModelImportModal: React.FC<Props> = ({
   const [uploading, setUploading] = useState(false);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [previewVisible, setPreviewVisible] = useState(false);
-  const [databaseList, setDatabaseList] = useState<any[]>([]);
-  const [selectedDatabaseId, setSelectedDatabaseId] = useState<number>();
-
-  useEffect(() => {
-    if (visible) {
-      loadDatabaseList();
-    }
-  }, [visible]);
-
-  const loadDatabaseList = async () => {
-    try {
-      const { code, data } = await getDatabaseList();
-      if (code === 200 && data) {
-        setDatabaseList(data);
-        // 默认选择第一个数据库
-        if (data.length > 0) {
-          setSelectedDatabaseId(data[0].id);
-        }
-      }
-    } catch (error: any) {
-      message.error('加载数据库列表失败');
-    }
-  };
 
   const uploadProps: UploadProps = {
     beforeUpload: (file) => {
@@ -102,15 +79,10 @@ const ModelImportModal: React.FC<Props> = ({
       return;
     }
 
-    if (!selectedDatabaseId) {
-      message.warning('请选择数据库');
-      return;
-    }
-
     const formData = new FormData();
     formData.append('file', fileList[0] as any);
     formData.append('domainId', String(domainId));
-    formData.append('databaseId', String(selectedDatabaseId));
+    // 不再需要传递databaseId，系统会自动根据dbSchema.db匹配
 
     setUploading(true);
 
@@ -202,8 +174,9 @@ const ModelImportModal: React.FC<Props> = ({
               <div>
                 <p>1. 点击"下载模板"获取JSON配置文件示例</p>
                 <p>2. 按照模板格式编辑您的配置（包含模型、指标、数据集）</p>
-                <p>3. 上传JSON文件，系统会自动创建模型+指标+数据集</p>
-                <p>4. 导入后即可在Chat BI中使用自然语言查询</p>
+                <p>3. 系统会根据dbSchema.db自动匹配数据库连接，无需手动选择</p>
+                <p>4. 上传JSON文件，系统会自动创建模型+指标+数据集</p>
+                <p>5. 导入后即可在Chat BI中使用自然语言查询</p>
               </div>
             }
             type="info"
@@ -218,26 +191,6 @@ const ModelImportModal: React.FC<Props> = ({
             >
               下载模板
             </Button>
-          </div>
-
-          <div>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <div>
-                <span style={{ marginRight: 8 }}>选择数据库：</span>
-                <Select
-                  style={{ width: 300 }}
-                  placeholder="请选择数据库"
-                  value={selectedDatabaseId}
-                  onChange={setSelectedDatabaseId}
-                >
-                  {databaseList.map((db) => (
-                    <Select.Option key={db.id} value={db.id}>
-                      {db.name} ({db.type})
-                    </Select.Option>
-                  ))}
-                </Select>
-              </div>
-            </Space>
           </div>
 
           <Upload {...uploadProps}>

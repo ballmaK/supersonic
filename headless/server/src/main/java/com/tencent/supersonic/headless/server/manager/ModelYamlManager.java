@@ -30,7 +30,9 @@ public class ModelYamlManager {
         dataModelYamlTpl.setMeasures(modelDetail.getMeasures().stream()
                 .map(ModelYamlManager::convert).collect(Collectors.toList()));
         dataModelYamlTpl.setName(modelResp.getBizName());
+        dataModelYamlTpl.setBizName(modelResp.getBizName());
         dataModelYamlTpl.setSourceId(modelResp.getDatabaseId());
+        dataModelYamlTpl.setDatabaseId(modelResp.getDatabaseId());
         if (modelDetail.getQueryType().equalsIgnoreCase(ModelDefineType.SQL_QUERY.getName())) {
             dataModelYamlTpl.setSqlQuery(modelDetail.getSqlQuery());
         } else {

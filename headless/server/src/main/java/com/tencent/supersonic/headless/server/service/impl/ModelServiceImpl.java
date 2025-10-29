@@ -581,22 +581,29 @@ public class ModelServiceImpl implements ModelService {
         }
 
         if (!CollectionUtils.isEmpty(metricReqList)) {
-            // 目前modeltail中的measure
-            Map<String, Measure> mesureMap = modelDetail.getMeasures().stream().collect(Collectors.toMap(Measure::getBizName, a -> a, (k1, k2) -> k1));
-            metricReqList.forEach(metricReq -> {
-                if (null != metricReq.getMetricDefineByMeasureParams() && !CollectionUtils.isEmpty(metricReq.getMetricDefineByMeasureParams().getMeasures())) {
-                    for(Measure alterMeasure : metricReq.getMetricDefineByMeasureParams().getMeasures()) {
-                        if (mesureMap.containsKey(alterMeasure.getBizName())) {
-                            Measure measure = mesureMap.get(alterMeasure.getBizName());
+            // 目前model_detail中的measure
+            Map<String, Measure> measureMap = modelDetail.getMeasures().stream()
+                    .collect(Collectors.toMap(Measure::getBizName, a -> a, (k1, k2) -> k1));
+            
+            // 记录需要更新/添加的measures
+            boolean hasMeasureUpdates = false;
+            
+            for (MetricReq metricReq : metricReqList) {
+                if (null != metricReq.getMetricDefineByMeasureParams() 
+                        && !CollectionUtils.isEmpty(metricReq.getMetricDefineByMeasureParams().getMeasures())) {
+                    hasMeasureUpdates = true;
+                    for (Measure alterMeasure : metricReq.getMetricDefineByMeasureParams().getMeasures()) {
+                        if (measureMap.containsKey(alterMeasure.getBizName())) {
+                            Measure measure = measureMap.get(alterMeasure.getBizName());
                             BeanUtils.copyProperties(alterMeasure, measure);
                         } else {
                             modelDetail.getMeasures().add(alterMeasure);
                         }
                     }
-                } else {
-                    modelDetail.getMeasures().clear();
                 }
-            });
+            }
+            
+            // 注意：不再无条件清空measures，保留原有的measures定义
         }
 
         modelDO.setModelDetail(JsonUtil.toString(modelDetail));

@@ -53,7 +53,7 @@ public class ModelImportController {
     public Map<String, Object> uploadJson(
             @RequestParam("file") MultipartFile file,
             @RequestParam("domainId") Long domainId,
-            @RequestParam("databaseId") Long databaseId,
+            @RequestParam(value = "databaseId", required = false) Long databaseId,
             HttpServletRequest request,
             HttpServletResponse response) throws Exception {
         
@@ -61,6 +61,11 @@ public class ModelImportController {
         
         log.info("开始导入模型文件: {}, 用户: {}, 领域ID: {}, 数据库ID: {}", 
                 file.getOriginalFilename(), user.getName(), domainId, databaseId);
+        
+        // databaseId 为 null，系统会根据每个模型的 dbSchema.db 自动匹配数据库连接
+        if (databaseId == null) {
+            log.info("未指定databaseId，系统将根据每个模型的dbSchema.db自动匹配对应的数据库连接");
+        }
         
         // 验证文件
         validateFile(file);
