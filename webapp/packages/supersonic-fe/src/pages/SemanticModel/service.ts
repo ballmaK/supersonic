@@ -835,3 +835,43 @@ export function deleteLlmConfig(id: number): Promise<any> {
     method: 'DELETE',
   });
 }
+
+/**
+ * 批量导入模型
+ */
+export function importModelsFromJson(formData: FormData): Promise<any> {
+  return request.post(`${process.env.API_BASE_URL}model/import/uploadJson`, {
+    data: formData,
+    requestType: 'form',
+  });
+}
+
+/**
+ * 预览导入文件
+ */
+export function previewImportJson(formData: FormData): Promise<any> {
+  return request.post(`${process.env.API_BASE_URL}model/import/previewJson`, {
+    data: formData,
+    requestType: 'form',
+  });
+}
+
+/**
+ * 下载导入模板
+ */
+export function downloadImportTemplate(): Promise<any> {
+  return request.get(`${process.env.API_BASE_URL}model/import/downloadTemplate`, {
+    responseType: 'blob',
+    getResponse: true,
+  }).then((response: any) => {
+    const blob = new Blob([response.data], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'model-import-template.json');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  });
+}

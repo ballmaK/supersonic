@@ -365,8 +365,11 @@ const ModelFieldForm: React.FC<Props> = ({
                       [isCreateName]: value,
                     });
                   } else {
+                    // 自动填充字段名称：优先使用comment(注释)，其次使用bizName(字段名)
+                    const autoName = record.name || record.comment || record.bizName;
                     onFieldChange(record.bizName, {
                       ...record,
+                      name: autoName,
                       checked: value,
                       [isCreateName]: value,
                     });

@@ -4,6 +4,66 @@
 - "Breaking Changes" describes any changes that may break existing functionality or cause
   compatibility issues with previous versions.
 
+## SuperSonic [0.9.11-dev] - 2025-10-29
+
+### Added
+- **数据集批量导入功能** - 通过上传 JSON 配置文件一键创建完整数据集
+  - 新增 `ModelImportController` REST API，支持文件上传、预览、模板下载
+  - 新增 `ModelImportService` 和实现类，支持两种导入格式
+  - 新增 `DataSetImportConfig` 配置类，支持一个数据集包含多个模型
+  - 新增前端 `ModelImportModal` 组件，提供友好的导入界面
+  - 自动创建模型、衍生指标和数据集，无需手动配置
+  - 在数据集管理页面添加"导入数据集"按钮
+  - 提供股票数据分析示例配置文件（`stock_dataset_import.json`）
+  
+- **级联删除功能** - 删除模型时自动删除关联的指标和维度
+  - 修改 `ModelServiceImpl.deleteModel()` 方法，支持级联删除
+  - 避免"存在基于该模型创建的指标和维度，暂不能删除"的错误提示
+  - 提升用户体验，一键清理所有关联数据
+
+### Enhanced
+- **模型字段自动填充** - 创建模型时自动填充字段名称
+  - 修改 `ModelFieldForm.tsx`，勾选"快速创建"时自动填入字段注释或字段名
+  - 减少手动输入，提升建模效率
+  
+- **数据库选择优化** - 导入数据集时必须选择数据库
+  - 在导入弹窗中添加数据库选择下拉框
+  - 自动加载数据库列表并默认选择第一个
+  - 避免 `databaseId=0` 导致的导入失败问题
+
+### Fixed
+- **数据库并发锁问题修复** - 删除指标/维度时的锁等待超时
+  - 在 `deleteModelDetailByDimAndMetric()` 方法添加 `synchronized` 同步锁
+  - 添加重试机制（最多3次，递增延迟）
+  - 添加异常捕获，避免阻塞删除流程
+  - 添加空值检查，避免 NPE 错误
+
+- **模型 SQL 简化指南** - 解决 Calcite 解析复杂 SQL 的问题
+  - 提供简化版模型 SQL 示例
+  - 文档说明避免使用 JOIN、WHERE、CASE WHEN 等复杂语法
+  - 推荐使用数据库视图或小模型组合的方式
+
+### Documentation
+- 新增 `模型导入功能使用说明.md` - 完整的导入功能文档
+- 新增 `SuperSonic_使用完整示例.md` - 从建模到查询的完整教程
+- 新增 `stock_semantic_model_simple.sql` - 简化版模型 SQL 示例
+- 更新 `README.md` in model_sql - 模型和查询 SQL 说明文档
+
+### Technical Details
+- 支持两种导入格式：
+  - **新格式**（推荐）：一个 JSON 对象包含数据集配置和多个模型
+  - **旧格式**（兼容）：JSON 数组，每个元素是独立模型
+- API 端点：
+  - `POST /api/semantic/model/import/uploadJson` - 导入数据集
+  - `POST /api/semantic/model/import/previewJson` - 预览配置
+  - `GET /api/semantic/model/import/downloadTemplate` - 下载模板
+
+### Known Issues
+- 预览功能暂时存在错误，建议直接导入（不影响主要功能）
+- 导入后如需删除，建议等待几秒让事务完全提交
+
+---
+
 ## SuperSonic [0.9.8] - 2024-11-01
 - Add LLM management module to reuse connection across agents.
 - Add ChatAPP configuration sub-module in Agent Management.

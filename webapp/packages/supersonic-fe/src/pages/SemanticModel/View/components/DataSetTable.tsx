@@ -6,6 +6,7 @@ import { StatusEnum } from '../../enum';
 import { useModel } from '@umijs/max';
 import { deleteView, updateView, getDataSetList, getAllModelByDomainId } from '../../service';
 import ViewCreateFormModal from './ViewCreateFormModal';
+import ModelImportModal from '../../components/ModelImportModal';
 import moment from 'moment';
 import styles from '../../components/style.less';
 import { ISemantic } from '../../data';
@@ -27,6 +28,7 @@ const DataSetTable: React.FC<Props> = ({ disabledEdit = false }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [createDataSourceModalOpen, setCreateDataSourceModalOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [modelList, setModelList] = useState<ISemantic.IModelItem[]>([]);
   const actionRef = useRef<ActionType>();
   const [editFormStep, setEditFormStep] = useState<number>(0);
@@ -230,6 +232,14 @@ const DataSetTable: React.FC<Props> = ({ disabledEdit = false }) => {
             ? [<></>]
             : [
                 <Button
+                  key="import"
+                  onClick={() => {
+                    setImportModalOpen(true);
+                  }}
+                >
+                  导入数据集
+                </Button>,
+                <Button
                   key="create"
                   type="primary"
                   onClick={() => {
@@ -268,6 +278,20 @@ const DataSetTable: React.FC<Props> = ({ disabledEdit = false }) => {
           }}
           onCancel={() => {
             setSearchModalOpen(false);
+          }}
+        />
+      )}
+
+      {importModalOpen && (
+        <ModelImportModal
+          visible={importModalOpen}
+          domainId={selectDomainId}
+          onCancel={() => {
+            setImportModalOpen(false);
+          }}
+          onSuccess={() => {
+            queryDataSetList();
+            setImportModalOpen(false);
           }}
         />
       )}

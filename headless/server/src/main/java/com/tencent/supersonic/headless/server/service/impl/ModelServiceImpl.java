@@ -165,11 +165,46 @@ public class ModelServiceImpl implements ModelService {
         if (datasourceDO == null) {
             return;
         }
-        checkDelete(id);
+        
+        // 级联删除：先删除该模型下的所有指标和维度
+        try {
+            MetaFilter metaFilter = new MetaFilter();
+            metaFilter.setModelIds(Lists.newArrayList(id));
+            
+            // 删除所有在线的指标
+            List<MetricResp> metricResps = metricService.getMetrics(metaFilter);
+            List<Long> onlineMetricIds = metricResps.stream()
+                    .filter(m -> Objects.equals(m.getStatus(), StatusEnum.ONLINE.getCode()))
+                    .map(MetricResp::getId)
+                    .collect(Collectors.toList());
+            if (!CollectionUtils.isEmpty(onlineMetricIds)) {
+                log.info("级联删除模型的指标，数量: {}", onlineMetricIds.size());
+                metricService.deleteMetricBatch(onlineMetricIds, user);
+            }
+            
+            // 删除所有在线的维度
+            List<DimensionResp> dimensionResps = dimensionService.getDimensions(metaFilter);
+            List<Long> onlineDimensionIds = dimensionResps.stream()
+                    .filter(d -> Objects.equals(d.getStatus(), StatusEnum.ONLINE.getCode()))
+                    .map(DimensionResp::getId)
+                    .collect(Collectors.toList());
+            if (!CollectionUtils.isEmpty(onlineDimensionIds)) {
+                log.info("级联删除模型的维度，数量: {}", onlineDimensionIds.size());
+                dimensionService.deleteDimensionBatch(onlineDimensionIds, user);
+            }
+        } catch (Exception e) {
+            log.error("级联删除指标和维度失败", e);
+            // 如果级联删除失败，仍然执行原有检查
+            checkDelete(id);
+        }
+        
+        // 删除模型
         datasourceDO.setStatus(StatusEnum.DELETED.getCode());
         datasourceDO.setUpdatedAt(new Date());
         datasourceDO.setUpdatedBy(user.getName());
         modelRepository.updateModel(datasourceDO);
+        
+        log.info("成功删除模型: {}", datasourceDO.getName());
     }
 
     @Override
@@ -569,35 +604,69 @@ public class ModelServiceImpl implements ModelService {
     }
 
     @Override
-    public void deleteModelDetailByDimAndMetric(Long modelId, List<DimensionDO> dimensionList, List<MetricDO> metricReqList) {
-        ModelDO modelDO = getModelDO(modelId);
-        ModelDetail modelDetail = JsonUtil.toObject(modelDO.getModelDetail(), ModelDetail.class);
-        if (!CollectionUtils.isEmpty(dimensionList)) {
-            dimensionList.forEach(dimensionReq -> {
-                Optional<Dimension> dimOptional = modelDetail.getDimensions().stream()
-                        .filter(dimension -> dimension.getBizName().equals(dimensionReq.getBizName()))
-                        .findFirst();
-                if (dimOptional.isPresent()) {
-                    Dimension dimension = dimOptional.get();
-                    modelDetail.getDimensions().remove(dimension);
-                }
-            });
-        }
+    public synchronized void deleteModelDetailByDimAndMetric(Long modelId, List<DimensionDO> dimensionList, List<MetricDO> metricReqList) {
+        try {
+            // 添加重试机制，避免锁等待
+            int maxRetries = 3;
+            int retryCount = 0;
+            
+            while (retryCount < maxRetries) {
+                try {
+                    ModelDO modelDO = getModelDO(modelId);
+                    if (modelDO == null) {
+                        log.warn("模型不存在，跳过删除模型详情: modelId={}", modelId);
+                        return;
+                    }
+                    
+                    ModelDetail modelDetail = JsonUtil.toObject(modelDO.getModelDetail(), ModelDetail.class);
+                    
+                    if (!CollectionUtils.isEmpty(dimensionList)) {
+                        dimensionList.forEach(dimensionReq -> {
+                            Optional<Dimension> dimOptional = modelDetail.getDimensions().stream()
+                                    .filter(dimension -> dimension.getBizName().equals(dimensionReq.getBizName()))
+                                    .findFirst();
+                            if (dimOptional.isPresent()) {
+                                Dimension dimension = dimOptional.get();
+                                modelDetail.getDimensions().remove(dimension);
+                            }
+                        });
+                    }
 
-        if (!CollectionUtils.isEmpty(metricReqList)) {
-            metricReqList.forEach(metricReq -> {
-                Optional<Measure> metricOptional = modelDetail.getMeasures().stream()
-                        .filter(measure -> measure.getBizName().equals(metricReq.getBizName()))
-                        .findFirst();
-                if (metricOptional.isPresent()) {
-                    Measure measure = metricOptional.get();
-                    modelDetail.getMeasures().remove(measure);
-                }
-            });
-        }
+                    if (!CollectionUtils.isEmpty(metricReqList)) {
+                        metricReqList.forEach(metricReq -> {
+                            Optional<Measure> metricOptional = modelDetail.getMeasures().stream()
+                                    .filter(measure -> measure.getBizName().equals(metricReq.getBizName()))
+                                    .findFirst();
+                            if (metricOptional.isPresent()) {
+                                Measure measure = metricOptional.get();
+                                modelDetail.getMeasures().remove(measure);
+                            }
+                        });
+                    }
 
-        modelDO.setModelDetail(JsonUtil.toString(modelDetail));
-        modelRepository.updateModel(modelDO);
+                    modelDO.setModelDetail(JsonUtil.toString(modelDetail));
+                    modelRepository.updateModel(modelDO);
+                    
+                    // 成功则退出重试循环
+                    break;
+                } catch (Exception e) {
+                    retryCount++;
+                    if (retryCount >= maxRetries) {
+                        log.error("删除模型详情失败，已重试{}次: modelId={}", maxRetries, modelId, e);
+                        throw e;
+                    }
+                    log.warn("删除模型详情失败，准备重试({}/{}): modelId={}", retryCount, maxRetries, modelId);
+                    try {
+                        Thread.sleep(200 * retryCount); // 递增等待时间
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("删除模型详情异常: modelId={}", modelId, e);
+            // 不抛出异常，避免阻塞删除流程
+        }
     }
 
     protected ModelDO getModelDO(Long id) {
